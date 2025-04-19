@@ -1,407 +1,264 @@
-function [states, performance] = calculate_cycle(params)
-% CALCULATE_CYCLE 计算超临界CO₂布雷顿循环的所有状态点和性能指标
-%
-% 输入参数:
-%   params - 包含以下字段的结构体:
-%     - P_high: 最高压力 (MPa)
-%     - P_low: 最低压力 (MPa)
-%     - T_high: 最高温度 (K)
-%     - T_low: 最低温度 (K)
-%     - P_reheat: 再热压力 (MPa)
-%     - P_intercool: 中间冷却压力 (MPa)
-%     - split_ratio: 分流比例
-%     - HT_recuperator_dT: 高温回热器端差 (K)
-%     - LT_recuperator_dT: 低温回热器端差 (K)
-%     - eta_turbine_HP: 高压透平效率
-%     - eta_turbine_LP: 低压透平效率
-%     - eta_compressor_main: 主压缩机效率
-%     - eta_compressor_recomp: 副压缩机效率
-%     - eta_recuperator_HT: 高温回热器效率
-%     - eta_recuperator_LT: 低温回热器效率
-%     - eta_heater: 加热器效率
-%     - m_dot: 工质质量流量 (kg/s)
-%
-% 输出参数:
-%   states - 包含所有状态点热力学参数的结构体数组(1-17)
-%     每个状态点包含: T, P, h, s, rho, cp 等参数
-%   performance - 循环性能指标的结构体
-%     包含: 热效率, 净功率, 各组件功率/热负荷等
-
-% 提取参数
-P_high = params.P_high;           % MPa
-P_low = params.P_low;             % MPa
-T_high = params.T_high;           % K
-T_low = params.T_low;             % K
-P_reheat = params.P_reheat;       % MPa
-P_intercool = params.P_intercool; % MPa
-split_ratio = params.split_ratio; % 分流比例
-HT_dT = params.HT_recuperator_dT; % K
-LT_dT = params.LT_recuperator_dT; % K
-eta_t_HP = params.eta_turbine_HP;
-eta_t_LP = params.eta_turbine_LP;
-eta_c_main = params.eta_compressor_main;
-eta_c_recomp = params.eta_compressor_recomp;
-eta_recup_HT = params.eta_recuperator_HT;
-eta_recup_LT = params.eta_recuperator_LT;
-eta_heater = params.eta_heater;
-m_dot = params.m_dot;             % kg/s
-
-% 安全常数定义
-T_CO2_min = 220; % CO₂最低安全温度(K)
-min_temp_diff = 10; % 最小温差(K)
-max_pressure = 30; % 最大安全压力(MPa)
-
-% 安全检查：压力参数
-P_high = min(P_high, max_pressure);
-P_low = min(P_low, P_high - 1);
-P_reheat = min(P_reheat, P_high);
-P_reheat = max(P_reheat, P_low + 1);
-P_intercool = min(P_intercool, P_high - 1);
-P_intercool = max(P_intercool, P_low + 1);
-
-% 创建状态点结构体数组并初始化所有字段为0
-for i = 1:17
-    states(i) = struct('T', 0, 'P', 0, 'h', 0, 's', 0, 'rho', 0, 'cp', 0);
-end
-
-% 初始化关键状态点
-% 状态点1 (高压透平入口)
-states(1).T = T_high;
-states(1).P = P_high;
-states(1).h = refpropm('H', 'T', states(1).T, 'P', states(1).P * 1000, 'CO2') / 1000;
-states(1).s = refpropm('S', 'T', states(1).T, 'P', states(1).P * 1000, 'CO2') / 1000;
-states(1).rho = refpropm('D', 'T', states(1).T, 'P', states(1).P * 1000, 'CO2');
-states(1).cp = refpropm('C', 'T', states(1).T, 'P', states(1).P * 1000, 'CO2') / 1000;
-
-% 状态点8 (冷却器出口/主压缩机a入口)
-states(8).T = T_low;
-states(8).P = P_low;
-states(8).h = refpropm('H', 'T', states(8).T, 'P', states(8).P * 1000, 'CO2') / 1000;
-states(8).s = refpropm('S', 'T', states(8).T, 'P', states(8).P * 1000, 'CO2') / 1000;
-states(8).rho = refpropm('D', 'T', states(8).T, 'P', states(8).P * 1000, 'CO2');
-states(8).cp = refpropm('C', 'T', states(8).T, 'P', states(8).P * 1000, 'CO2') / 1000;
-
-% 初始估计状态点14 (合流点出口/低温回热器冷侧入口)
-states(14).T = max(T_low + 50, T_CO2_min); % 确保温度高于CO₂的最低允许温度
-states(14).P = P_high;
-states(14).h = refpropm('H', 'T', states(14).T, 'P', states(14).P * 1000, 'CO2') / 1000;
-states(14).s = refpropm('S', 'T', states(14).T, 'P', states(14).P * 1000, 'CO2') / 1000;
-states(14).rho = refpropm('D', 'T', states(14).T, 'P', states(14).P * 1000, 'CO2');
-states(14).cp = refpropm('C', 'T', states(14).T, 'P', states(14).P * 1000, 'CO2') / 1000;
-
-% 计算各状态点热力学参数的最大迭代次数和收敛容差
-max_iter = 100;
-tol = 1e-6;
-
-% 主循环计算
-for iter = 1:max_iter
-    % 保存上一次迭代的状态点，用于检查收敛性
-    states_prev = states;
+function [state,perf] = calculate_cycle(para)
+    % CALCULATE_CYCLE  Steady‑state model of a reheated–recompressed
+    %                  double‑turbine sCO2 Brayton cycle.
+    %
+    % ─────────────── 输入参数 ───────────────
+    %   para : struct  (新增 deltaT_inter)
+    %       P_high  [Pa]  – Max cycle pressure
+    %       P_low   [Pa]  – Min cycle pressure
+    %       T_high  [K]   – Turbine‑inlet temperature
+    %       T_low   [K]   – Compressor‑suction temperature
+    %       P_reheat      – Reheater inlet pressure
+    %       P_intercool   – Intercooler outlet pressure (= main‑C1 discharge)
+    %       deltaT_inter  – Approach temperature of intercooler  (K)
+    %       eta_t_HP, eta_t_LP
+    %       eta_c_main,  eta_c_recomp
+    %       eta_recup_HT, eta_recup_LT
+    %       eta_heater,   eta_reheater
+    %       m_dot   [kg/s] – Total mass flow
+    %       alpha          – Recompression mass fraction
+    %       deltaT_HT, deltaT_LT
+    %
+    % ─────────────── 输出 ───────────────
+    %   state(17) : struct array, fields {T,P,h,s}
+    %   perf      : struct –   W_net, Q_in, Q_cool, eta_th, Eb_error, status
+    %
+    % 流程顺序
+    %   1  HP‑Turb → 2 → Reheat → 3 → LP‑Turb → 4
+    %   4 → HT‑Recup(hot) → 5 → LT‑Recup(hot) → 6 → split α
+    %   main‑path : 6 → 7(C1‑in) → 8(C1‑out) → Intercooler → 9 → 10(C2‑out)
+    %   recomp    : 6 → 11(RC‑in) → 12(RC‑out)
+    %   Merge → 13 → LT‑Recup(cold) → 14 → HT‑Recup(cold) → 15 → Heater → 16(=1)
+    %
+    %   All heat loads Q = m·Δh,   Q = max(0,Q)  (non‑negative by definition)
+    %   Recuperator losses referenced to the *initial cold‑side enthalpy* (h14_0).
+    %
+    % Author : <your name>      2025‑04‑18
+    % ---------------------------------------------------------------
     
-    % ========== 1. 透平和再热器计算 ==========
-    % 状态点1 (高压透平入口)
-    states(1).h = refpropm('H', 'T', states(1).T, 'P', states(1).P * 1000, 'CO2') / 1000; % kJ/kg
-    states(1).s = refpropm('S', 'T', states(1).T, 'P', states(1).P * 1000, 'CO2') / 1000; % kJ/(kg·K)
-    states(1).rho = refpropm('D', 'T', states(1).T, 'P', states(1).P * 1000, 'CO2');      % kg/m³
-    states(1).cp = refpropm('C', 'T', states(1).T, 'P', states(1).P * 1000, 'CO2') / 1000; % kJ/(kg·K)
+    %% ───── 1. 前置工具 ─────
+    safeH = @(varargin) safe_prop('H',varargin{:})/1000;   % kJ/kg
+    safeS = @(varargin) safe_prop('S',varargin{:})/1000;   % kJ/kg‐K
+    safeT = @(varargin) safe_prop('T',varargin{:});
+    KPa   = @(P) P/1e3;
     
-    % 状态点2 (高压透平出口/再热器入口) - 等熵膨胀后使用透平效率计算
-    s2s = states(1).s; % 等熵过程
-    h2s = refpropm('H', 'P', P_reheat * 1000, 'S', s2s * 1000, 'CO2') / 1000; % kJ/kg
-    % 实际焓变 = 等熵焓变 / 透平效率
-    states(2).h = states(1).h - eta_t_HP * (states(1).h - h2s); % kJ/kg
-    states(2).P = P_reheat; % MPa
-    states(2).T = refpropm('T', 'P', states(2).P * 1000, 'H', states(2).h * 1000, 'CO2'); % K
-    % 安全检查：确保温度不低于最低允许温度
-    states(2).T = max(states(2).T, T_CO2_min);
-    states(2).s = refpropm('S', 'T', states(2).T, 'P', states(2).P * 1000, 'CO2') / 1000; % kJ/(kg·K)
-    states(2).rho = refpropm('D', 'T', states(2).T, 'P', states(2).P * 1000, 'CO2');      % kg/m³
-    states(2).cp = refpropm('C', 'T', states(2).T, 'P', states(2).P * 1000, 'CO2') / 1000; % kJ/(kg·K)
+    nz = @(x) max(0,x);          % non‑negative helper
     
-    % 状态点3 (再热器出口/低压透平入口)
-    states(3).T = T_high; % 再热到最高温度
-    states(3).P = states(2).P; % 压力不变
-    states(3).h = refpropm('H', 'T', states(3).T, 'P', states(3).P * 1000, 'CO2') / 1000; % kJ/kg
-    states(3).s = refpropm('S', 'T', states(3).T, 'P', states(3).P * 1000, 'CO2') / 1000; % kJ/(kg·K)
-    states(3).rho = refpropm('D', 'T', states(3).T, 'P', states(3).P * 1000, 'CO2');      % kg/m³
-    states(3).cp = refpropm('C', 'T', states(3).T, 'P', states(3).P * 1000, 'CO2') / 1000; % kJ/(kg·K)
+    %% ───── 2. 状态数组预分配 ─────
+    state = repmat(struct('T',0,'P',0,'h',0,'s',0),17,1);
     
-    % 状态点4 (低压透平出口/高温回热器热侧入口)
-    s4s = states(3).s; % 等熵过程
-    h4s = refpropm('H', 'P', P_low * 1000, 'S', s4s * 1000, 'CO2') / 1000; % kJ/kg
-    % 实际焓变 = 等熵焓变 / 透平效率
-    states(4).h = states(3).h - eta_t_LP * (states(3).h - h4s); % kJ/kg
-    states(4).P = P_low; % MPa
-    states(4).T = refpropm('T', 'P', states(4).P * 1000, 'H', states(4).h * 1000, 'CO2'); % K
-    % 安全检查：确保温度不低于最低允许温度
-    states(4).T = max(states(4).T, T_CO2_min);
-    states(4).s = refpropm('S', 'T', states(4).T, 'P', states(4).P * 1000, 'CO2') / 1000; % kJ/(kg·K)
-    states(4).rho = refpropm('D', 'T', states(4).T, 'P', states(4).P * 1000, 'CO2');      % kg/m³
-    states(4).cp = refpropm('C', 'T', states(4).T, 'P', states(4).P * 1000, 'CO2') / 1000; % kJ/(kg·K)
+    % 为可读性定义索引常量
+    HP_IN=1;  HP_OUT=2;  RH_OUT=3;  LP_OUT=4;   ...
+    HT_hot_out=5;  LT_hot_out=6;  C1_IN=7;  C1_OUT=8;
+    IC_OUT=9;       C2_OUT=10; RC_IN=11;  RC_OUT=12;
+    MIX=13; LT_cold_out=14; HT_cold_out=15;
+    HEATER_IN=16; HEATER_OUT=17;
     
-    % ========== 2. 回热器计算（修改后的逻辑） ==========
-    % ---------- 2.1 高温回热器(HT)计算 ----------
-    % a. 确定热侧进出口状态
-    % 状态点4已经计算好（高温回热器热侧入口）
+    %% ───── 3. 基本参数与便利变量 ─────
+    P_hi = para.P_high;  P_lo = para.P_low;
+    P_re = para.P_reheat; P_ic = para.P_intercool;
+    T_hi = para.T_high;  T_lo = para.T_low;
     
-    % ---- HT 回热器调试输出 ----
-    Q_HT_hot      = m_dot * (states(4).h - states(5).h) * eta_recup_HT;
-    T16_ideal     = states(4).T - HT_dT;
-    T16_minByDiff = states(15).T + min_temp_diff;
-    h16_ideal     = refpropm('H','T', max(T16_ideal, T16_minByDiff), 'P', states(15).P*1000, 'CO2')/1000;
-    Q_HT_cold_max = m_dot * (h16_ideal - states(15).h);
-    Q_HT_actual   = min(Q_HT_hot, Q_HT_cold_max);
-    fprintf('HT recup iter %d: h4=%.1f, h5=%.1f, Q_hot=%.1f, Q_cold_max=%.1f, Q_act=%.1f, T16_i=%.1f, T15=%.1f\n', ...
-            iter, states(4).h, states(5).h, Q_HT_hot, Q_HT_cold_max, Q_HT_actual, T16_ideal, states(15).T);
-    % -----------------------------
+    mdot = para.m_dot;  a = para.alpha;
     
-    % 使用端差约束确定热侧出口温度，但要确保温度不低于最低安全温度
-    % 假设冷侧入口温度states(15).T（暂不知道，使用上次迭代结果或初始估计）
-    if iter == 1
-        % 第一次迭代，使用初始估计
-        states(15).T = max(states(4).T - 100, T_CO2_min);
-        states(15).P = P_high;
-        states(15).h = refpropm('H', 'T', states(15).T, 'P', states(15).P * 1000, 'CO2') / 1000;
+    % 关键效率
+    eta_HP = para.eta_t_HP;  eta_LP = para.eta_t_LP;
+    eta_C  = para.eta_c_main; eta_RC = para.eta_c_recomp;
+    eps_HT = para.eta_recup_HT; eps_LT = para.eta_recup_LT;
+    
+    %% ───── 4. ―― Turbines & Reheat ―― ─────
+    state(HP_IN).T = T_hi; state(HP_IN).P = P_hi;
+    state(HP_IN).h = safeH('T',T_hi,'P',KPa(P_hi));
+    state(HP_IN).s = safeS('T',T_hi,'P',KPa(P_hi));
+    
+    % 等熵出口
+    h2s = safeH('P',KPa(P_re),'S',state(HP_IN).s*1000);
+    state(HP_OUT).h = state(HP_IN).h - eta_HP*(state(HP_IN).h - h2s);
+    state(HP_OUT).P = P_re;
+    state(HP_OUT).T = safeT('P',KPa(P_re),'H',state(HP_OUT).h*1000);
+    state(HP_OUT).s = safeS('T',state(HP_OUT).T,'P',KPa(P_re));
+    
+    % 再热 → RH_OUT
+    state(RH_OUT).T = T_hi;
+    state(RH_OUT).P = state(HP_OUT).P;
+    state(RH_OUT).h = safeH('T',T_hi,'P',KPa(P_re));
+    state(RH_OUT).s = safeS('T',T_hi,'P',KPa(P_re));
+    
+    % LP Turbine
+    h4s = safeH('P',KPa(P_lo),'S',state(RH_OUT).s*1000);
+    state(LP_OUT).h = state(RH_OUT).h - eta_LP*(state(RH_OUT).h - h4s);
+    state(LP_OUT).P = P_lo;
+    state(LP_OUT).T = safeT('P',KPa(P_lo),'H',state(LP_OUT).h*1000);
+    state(LP_OUT).s = safeS('T',state(LP_OUT).T,'P',KPa(P_lo));
+    
+    %% ───── 5. ―― HT Recuperator ―― ─────
+    % 冷侧初始焓在合流前尚未知，用占位符延后迭代
+    state(MIX).h = NaN;  % will be overwritten later
+    
+    % 初始估计：假设 HT effectiveness 达到设计值一次收敛
+    d_h_HTmax = state(LP_OUT).h - state(MIX).h;    % MIX.h 待会儿赋值
+    % 用匿名函数在合流后再更新
+    
+    %% ───── 6. ―― LT Recuperator & Split ――
+    % 先设一个 LT 冷侧初始温度 = T_lo + deltaT_LT
+    state(LT_cold_out).T = T_lo + para.deltaT_LT;
+    state(LT_cold_out).P = P_ic;                     % 低温侧初始压力 = intercool出口
+    state(LT_cold_out).h = safeH('T',state(LT_cold_out).T,'P',KPa(P_ic));
+    state(LT_cold_out).s = safeS('T',state(LT_cold_out).T,'P',KPa(P_ic));
+    
+    h14_0 = state(LT_cold_out).h;    % *固定* 作为损失基准
+    
+    %% ───── 7. ―― Main compressor stage‑1 ――
+    state(C1_IN) = state(LT_hot_out);   % 位置保留，稍后更新
+    % 为防止循环依赖，先把 hot‑LT 出口临时设成 LP_OUT
+    state(LT_hot_out) = state(LP_OUT);
+    
+    % 迭代上限与收敛容差
+    for it = 1:60
+        prev = [state.h];       %#ok<AGROW>
+    
+        % 根据最新 LT_hot_out 更新 main‑path入口
+        state(C1_IN) = state(LT_hot_out);
+    
+        % ── C1 (η_c_main)
+        s7 = state(C1_IN).s;
+        h8s = safeH('P',KPa(P_ic),'S',s7*1000);
+        state(C1_OUT).h = state(C1_IN).h + (h8s-state(C1_IN).h)/eta_C;
+        state(C1_OUT).P = P_ic;
+        state(C1_OUT).T = safeT('P',KPa(P_ic),'H',state(C1_OUT).h*1000);
+        state(C1_OUT).s = safeS('T',state(C1_OUT).T,'P',KPa(P_ic));
+    
+        % ── Intercooler (approach ΔT = deltaT_inter)
+        state(IC_OUT).T = T_lo + para.deltaT_inter;
+        state(IC_OUT).P = state(C1_OUT).P;
+        state(IC_OUT).h = safeH('T',state(IC_OUT).T,'P',KPa(P_ic));
+        state(IC_OUT).s = safeS('T',state(IC_OUT).T,'P',KPa(P_ic));
+    
+        % ── C2
+        s9 = state(IC_OUT).s;
+        h10s = safeH('P',KPa(P_hi),'S',s9*1000);
+        state(C2_OUT).h = state(IC_OUT).h + (h10s-state(IC_OUT).h)/eta_C;
+        state(C2_OUT).P = P_hi;
+        state(C2_OUT).T = safeT('P',KPa(P_hi),'H',state(C2_OUT).h*1000);
+        state(C2_OUT).s = safeS('T',state(C2_OUT).T,'P',KPa(P_hi));
+    
+        %% ───── 8. ―― Recompressor path ――
+        state(RC_IN) = state(LT_hot_out);  % same inlet
+        s11 = state(RC_IN).s;
+        h12s = safeH('P',KPa(P_hi),'S',s11*1000);
+        state(RC_OUT).h = state(RC_IN).h + (h12s-state(RC_IN).h)/eta_RC;
+        state(RC_OUT).P = P_hi;
+        state(RC_OUT).T = safeT('P',KPa(P_hi),'H',state(RC_OUT).h*1000);
+        state(RC_OUT).s = safeS('T',state(RC_OUT).T,'P',KPa(P_hi));
+    
+        %% ───── 9. ―― Merge point ――
+        state(MIX).h = (1-a)*state(C2_OUT).h + a*state(RC_OUT).h;
+        state(MIX).P = P_hi;
+        state(MIX).T = safeT('P',KPa(P_hi),'H',state(MIX).h*1000);
+        state(MIX).s = safeS('T',state(MIX).T,'P',KPa(P_hi));
+    
+        %% ─────10. ―― Recuperators (now with MIX updated) ――
+        % ------- HT -------
+        d_h_HTmax = state(LP_OUT).h - state(MIX).h;
+        d_h_HT     = eps_HT * d_h_HTmax;
+        state(HT_hot_out).h  = state(LP_OUT).h - d_h_HT;
+        state(HT_cold_out).h = state(MIX).h   + d_h_HT;
+    
+        % property calls
+        state(HT_hot_out).P = P_lo;
+        state(HT_hot_out).T = safeT('P',KPa(P_lo),'H',state(HT_hot_out).h*1000);
+        state(HT_hot_out).s = safeS('T',state(HT_hot_out).T,'P',KPa(P_lo));
+    
+        state(HT_cold_out).P = P_hi;
+        state(HT_cold_out).T = safeT('P',KPa(P_hi),'H',state(HT_cold_out).h*1000);
+        state(HT_cold_out).s = safeS('T',state(HT_cold_out).T,'P',KPa(P_hi));
+    
+        % ------- LT -------
+        d_h_LTmax = state(HT_hot_out).h - h14_0;
+        d_h_LT    = eps_LT * d_h_LTmax;
+        state(LT_hot_out).h = state(HT_hot_out).h - d_h_LT;
+        state(LT_cold_out).h = h14_0 + d_h_LT;  % cold‑side outlet
+    
+        state(LT_hot_out).P = P_lo;
+        state(LT_hot_out).T = safeT('P',KPa(P_lo),'H',state(LT_hot_out).h*1000);
+        state(LT_hot_out).s = safeS('T',state(LT_hot_out).T,'P',KPa(P_lo));
+    
+        state(LT_cold_out).T = safeT('P',KPa(P_ic),'H',state(LT_cold_out).h*1000);
+        state(LT_cold_out).s = safeS('T',state(LT_cold_out).T,'P',KPa(P_ic));
+    
+        %% ---- 收敛检查 ----
+        if max(abs([state.h]-prev)) < 1e-6,    break,   end
     end
     
-    % 确定热侧出口温度(状态点5)，确保有足够的温差
-    states(5).T = max(states(15).T + min_temp_diff, T_CO2_min);
-    states(5).P = states(4).P; % 忽略压降
-    states(5).h = refpropm('H', 'T', states(5).T, 'P', states(5).P * 1000, 'CO2') / 1000;
-    states(5).s = refpropm('S', 'T', states(5).T, 'P', states(5).P * 1000, 'CO2') / 1000;
-    states(5).rho = refpropm('D', 'T', states(5).T, 'P', states(5).P * 1000, 'CO2');
-    states(5).cp = refpropm('C', 'T', states(5).T, 'P', states(5).P * 1000, 'CO2') / 1000;
+    %% ───── 11. Heater ─────
+    state(HEATER_IN) = state(HT_cold_out);
+    state(HEATER_OUT) = state(HP_IN);  % same as turbine inlet
     
-    % b. 计算高温回热器热侧热负荷
-    Q_HT_available = Q_HT_hot * eta_recup_HT;
+    %% ───── 12. 性能计算 ─────
+    m_main = (1-a)*mdot;   m_rc = a*mdot;
     
-    % c. 设定冷侧出口温度，需满足端差约束
-    % 理想情况下，冷侧出口温度 = 热侧入口温度 - 端差
-    T16_ideal = states(4).T - HT_dT;
-    % 考虑安全限制
-    T16_ideal = max(T16_ideal, states(15).T + min_temp_diff);
-    T16_ideal = max(T16_ideal, T_CO2_min);
+    W_turb = mdot * ( state(HP_IN).h - state(HP_OUT).h  ...
+                    + state(RH_OUT).h - state(LP_OUT).h );
     
-    % 计算理想情况下的冷侧出口状态
-    states(16).P = states(15).P; % 忽略压降
-    states(16).T = T16_ideal;
-    % 安全检查：确保焓值在合理范围内
-    try
-        h16_ideal = refpropm('H', 'T', states(16).T, 'P', states(16).P * 1000, 'CO2') / 1000;
-    catch
-        % 如果计算出错，使用安全值
-        states(16).T = max(states(15).T + min_temp_diff, T_CO2_min);
-        h16_ideal = refpropm('H', 'T', states(16).T, 'P', states(16).P * 1000, 'CO2') / 1000;
+    W_comp = m_main*( state(C1_OUT).h - state(C1_IN).h ...
+                    + state(C2_OUT).h - state(IC_OUT).h ) ...
+           + m_rc  *( state(RC_OUT).h - state(RC_IN).h );
+    
+    perf.W_net = W_turb - W_comp;
+    
+    % 热输入（加热器+再热器，含效率）
+    Q_heater = nz( mdot*(state(HEATER_OUT).h - state(HEATER_IN).h) );
+    Q_reheat = nz( mdot*(state(RH_OUT).h     - state(HP_OUT).h   ) );
+    perf.Q_in = Q_heater/para.eta_heater + Q_reheat/para.eta_reheater;
+    
+    % 冷却负荷：IC + 未回收损失
+    Q_IC  = nz( m_main*(state(C1_OUT).h - state(IC_OUT).h) );
+    Q_LTh = nz( mdot*(d_h_LTmax - d_h_LT) );   % LT 未回收
+    Q_HTh = nz( mdot*(d_h_HTmax - d_h_HT) );   % HT 未回收
+    perf.Q_cool = Q_IC + Q_LTh + Q_HTh;
+    
+    perf.eta_th = perf.W_net / perf.Q_in;
+    perf.Eb_error = abs( perf.Q_in - (perf.W_net + perf.Q_cool) ) / perf.Q_in;
+    perf.status = 0;
+    
+    %% ───── 13. 打印/返回 ─────
+    fprintf('[Self‑test]  Energy error = %.3f %%\n',perf.Eb_error*100);
+    
+    %% ───── 14. 内置单元测试 (仅首次调用演示) ─────
+    if nargin==0  % 若直接运行文件 → demo
+        para = default_para();          %#ok<NASGU>
+        [~,~] = calculate_cycle(para);  % 递归调用演示
     end
     
-    % d. 计算冷侧实际吸收热量
-    Q_HT_cold_max = m_dot * (h16_ideal - states(15).h);
-    % 取热侧释放热量与冷侧最大吸收热量的较小值
-    Q_HT_actual = min(Q_HT_available, Q_HT_cold_max);
-    
-    % e. 根据实际换热量计算状态点16的最终状态
-    states(16).h = states(15).h + Q_HT_actual / m_dot;
-    % 安全检查：确保焓值不低于最小值
-    try
-        min_h16 = refpropm('H', 'T', T_CO2_min, 'P', states(16).P * 1000, 'CO2') / 1000;
-        states(16).h = max(states(16).h, min_h16);
-        states(16).T = refpropm('T', 'P', states(16).P * 1000, 'H', states(16).h * 1000, 'CO2');
-    catch
-        % 如果计算出错，保持温度不变，重新计算焓值
-        states(16).T = max(states(15).T + min_temp_diff, T_CO2_min);
-        states(16).h = refpropm('H', 'T', states(16).T, 'P', states(16).P * 1000, 'CO2') / 1000;
-    end
-    states(16).s = refpropm('S', 'T', states(16).T, 'P', states(16).P * 1000, 'CO2') / 1000;
-    states(16).rho = refpropm('D', 'T', states(16).T, 'P', states(16).P * 1000, 'CO2');
-    states(16).cp = refpropm('C', 'T', states(16).T, 'P', states(16).P * 1000, 'CO2') / 1000;
-    
-    % ---------- 2.2 低温回热器(LT)计算（改进） ----------
-    % 目标：同时满足能量平衡 Q_hot = Q_cold 和端差约束 T5 - T6 = LT_dT
-    % 定义待求解变量 T5（热侧出口温度），T6 = T5 - LT_dT
-    fun = @(T5) m_dot*(refpropm('H','T',T5,'P',states(5).P*1000,'CO2')/1000 ...
-                     - refpropm('H','T',T5-LT_dT,'P',states(5).P*1000,'CO2')/1000)*eta_recup_LT ...
-               - m_dot*(refpropm('H','T',T5-LT_dT,'P',states(5).P*1000,'CO2')/1000 - states(14).h);
-    T5_guess = states(14).T + LT_dT*1.5;
-    % 使用 fzero 求解 T5
-    T5 = fzero(fun, T5_guess);
-    T6 = T5 - LT_dT;
-    % 更新状态点5和6
-    states(5).T = T5; states(6).T = T6;
-    % 同步压力，忽略压降
-    states(6).P = states(5).P;
-    states(5).h = refpropm('H','T',T5,'P',states(5).P*1000,'CO2')/1000;
-    states(6).h = refpropm('H','T',T6,'P',states(6).P*1000,'CO2')/1000;
-    states(5).s = refpropm('S','T',T5,'P',states(5).P*1000,'CO2')/1000;
-    states(6).s = refpropm('S','T',T6,'P',states(6).P*1000,'CO2')/1000;
-    states(5).rho = refpropm('D','T',T5,'P',states(5).P*1000,'CO2');
-    states(6).rho = refpropm('D','T',T6,'P',states(6).P*1000,'CO2');
-    states(5).cp = refpropm('C','T',T5,'P',states(5).P*1000,'CO2')/1000;
-    states(6).cp = refpropm('C','T',T6,'P',states(6).P*1000,'CO2')/1000;
-    % 计算实际低温回热器热负荷
-    Q_recup_LT = m_dot*(states(5).h - states(6).h)*eta_recup_LT;
-
-    % ========== 3. 分流、冷却器和压缩机计算 ==========
-    % 分流 - 状态点7和状态点12的热力学性质与状态点6相同，仅流量不同
-    states(7) = states(6);
-    states(12) = states(6);
-    
-    % 主路 - 冷却器和主压缩机
-    % 状态点8 (冷却器出口/主压缩机a入口)
-    states(8).T = T_low;
-    states(8).P = P_low;
-    states(8).h = refpropm('H', 'T', states(8).T, 'P', states(8).P * 1000, 'CO2') / 1000;
-    states(8).s = refpropm('S', 'T', states(8).T, 'P', states(8).P * 1000, 'CO2') / 1000;
-    states(8).rho = refpropm('D', 'T', states(8).T, 'P', states(8).P * 1000, 'CO2');
-    states(8).cp = refpropm('C', 'T', states(8).T, 'P', states(8).P * 1000, 'CO2') / 1000;
-    
-    % 状态点9 (主压缩机a出口/中间冷却入口)
-    s9s = states(8).s; % 等熵过程
-    h9s = refpropm('H', 'P', P_intercool * 1000, 'S', s9s * 1000, 'CO2') / 1000;
-    % 实际焓变 = 等熵焓变 / 压缩机效率
-    states(9).h = states(8).h + (h9s - states(8).h) / eta_c_main;
-    states(9).P = P_intercool; % MPa
-    states(9).T = refpropm('T', 'P', states(9).P * 1000, 'H', states(9).h * 1000, 'CO2');
-    % 安全检查：确保温度不低于最低允许温度
-    states(9).T = max(states(9).T, T_CO2_min);
-    states(9).s = refpropm('S', 'T', states(9).T, 'P', states(9).P * 1000, 'CO2') / 1000;
-    states(9).rho = refpropm('D', 'T', states(9).T, 'P', states(9).P * 1000, 'CO2');
-    states(9).cp = refpropm('C', 'T', states(9).T, 'P', states(9).P * 1000, 'CO2') / 1000;
-    
-    % 状态点10 (中间冷却出口/主压缩机b入口)
-    states(10).T = T_low;
-    states(10).P = states(9).P; % 忽略压降
-    states(10).h = refpropm('H', 'T', states(10).T, 'P', states(10).P * 1000, 'CO2') / 1000;
-    states(10).s = refpropm('S', 'T', states(10).T, 'P', states(10).P * 1000, 'CO2') / 1000;
-    states(10).rho = refpropm('D', 'T', states(10).T, 'P', states(10).P * 1000, 'CO2');
-    states(10).cp = refpropm('C', 'T', states(10).T, 'P', states(10).P * 1000, 'CO2') / 1000;
-    
-    % 状态点11 (主压缩机b出口/合流点)
-    s11s = states(10).s; % 等熵过程
-    h11s = refpropm('H', 'P', P_high * 1000, 'S', s11s * 1000, 'CO2') / 1000;
-    % 实际焓变 = 等熵焓变 / 压缩机效率
-    states(11).h = states(10).h + (h11s - states(10).h) / eta_c_main;
-    states(11).P = P_high; % MPa
-    states(11).T = refpropm('T', 'P', states(11).P * 1000, 'H', states(11).h * 1000, 'CO2');
-    % 安全检查：确保温度不低于最低允许温度
-    states(11).T = max(states(11).T, T_CO2_min);
-    states(11).s = refpropm('S', 'T', states(11).T, 'P', states(11).P * 1000, 'CO2') / 1000;
-    states(11).rho = refpropm('D', 'T', states(11).T, 'P', states(11).P * 1000, 'CO2');
-    states(11).cp = refpropm('C', 'T', states(11).T, 'P', states(11).P * 1000, 'CO2') / 1000;
-    
-    % 副路 - 副压缩机
-    % 状态点13 (副压缩机出口/合流点)
-    % ---------- 副压缩机理想等熵出口（限幅处理） ----------
-    % 查询该压力下熵的上下限（kJ/kg·K）
-    Smin = refpropm('S','T',T_low,'P',P_high*1000,'CO2')/1000;
-    Smax = refpropm('S','T',T_high,'P',P_high*1000,'CO2')/1000;
-    % 原始熵值并限幅到 [Smin,Smax]
-    s13s_unclamped = states(12).s * 1000;
-    s13s_clamped   = min(max(s13s_unclamped, Smin*1000), Smax*1000);
-    % 安全调用 REFPROP 计算焓，失败时降级使用等温焓
-    try
-        h13s = refpropm('H','P',P_high*1000,'S', s13s_clamped,'CO2')/1000;
-    catch
-        warning('副压缩机等熵变换熵超范围，降级使用等温焓');
-        h13s = refpropm('H','T', states(12).T, 'P', P_high*1000,'CO2')/1000;
-    end
-    % 实际焓变 = 等熵焓变 / 压缩机效率
-    states(13).h = states(12).h + (h13s - states(12).h) / eta_c_recomp;
-    states(13).P = P_high; % MPa
-    states(13).T = refpropm('T', 'P', states(13).P * 1000, 'H', states(13).h * 1000, 'CO2');
-    % 安全检查：确保温度不低于最低允许温度
-    states(13).T = max(states(13).T, T_CO2_min);
-    states(13).s = refpropm('S', 'T', states(13).T, 'P', states(13).P * 1000, 'CO2') / 1000;
-    states(13).rho = refpropm('D', 'T', states(13).T, 'P', states(13).P * 1000, 'CO2');
-    states(13).cp = refpropm('C', 'T', states(13).T, 'P', states(13).P * 1000, 'CO2') / 1000;
-    
-    % 合流 - 状态点14 (合流点出口/低温回热器冷侧入口)
-    states(14).h = (1 - split_ratio) * states(11).h + split_ratio * states(13).h;
-    states(14).P = P_high; % MPa
-    % 使用焓值和压力计算温度，并确保在有效范围内
-    try
-        states(14).T = refpropm('T', 'P', states(14).P * 1000, 'H', states(14).h * 1000, 'CO2');
-        % 安全检查：确保温度不低于最低允许温度
-        states(14).T = max(states(14).T, T_CO2_min);
-    catch
-        % 如果计算出错，使用安全值
-        states(14).T = max((states(11).T + states(13).T) / 2, T_CO2_min);
-        states(14).h = refpropm('H', 'T', states(14).T, 'P', states(14).P * 1000, 'CO2') / 1000;
-    end
-    states(14).s = refpropm('S', 'T', states(14).T, 'P', states(14).P * 1000, 'CO2') / 1000;
-    states(14).rho = refpropm('D', 'T', states(14).T, 'P', states(14).P * 1000, 'CO2');
-    states(14).cp = refpropm('C', 'T', states(14).T, 'P', states(14).P * 1000, 'CO2') / 1000;
-    
-    % ========== 5. 加热器计算 ==========
-    % 状态点17 (加热器出口/高压透平入口) - 与状态点1相同
-    states(17) = states(1);
-    
-    % 检查收敛性 - 比较重要状态点的温度
-    diff_max = 0;
-    key_points = [1, 4, 6, 14, 15, 16]; % 选择关键状态点进行收敛性检查
-    for i = key_points
-        if iter > 1
-            diff = abs(states(i).T - states_prev(i).T);
-            diff_max = max(diff_max, diff);
+    % ====================================================================== %
+    function val = safe_prop(prop,varargin)
+    % 安全封装 REPROP 调用，若闪蒸失败则尝试微调求平均
+        try
+            val = refpropm(prop,varargin{:},'CO2');
+        catch
+            x = varargin{2};  dv = 1e-4*max(abs(x),1);
+            v1 = refpropm(prop,varargin{:},'CO2','T',varargin{2}-dv);
+            v2 = refpropm(prop,varargin{:},'CO2','T',varargin{2}+dv);
+            val = (v1+v2)/2;
         end
     end
-    
-    if iter > 1 && diff_max < tol
-        break; % 收敛，退出迭代
+    % ---------------------------------------------------------------------- %
+    function p = default_para()
+    % 默认测试参数（示例）
+        p.P_high = 16e6;   p.P_low = 7.5e6;
+        p.T_high = 840;    p.T_low = 305;
+        p.P_reheat = 10e6; p.P_intercool = 10e6;
+        p.deltaT_inter = 8;      % 新增 intercool 端差
+        p.eta_t_HP = .93;  p.eta_t_LP = .93;
+        p.eta_c_main = .89; p.eta_c_recomp = .89;
+        p.eta_recup_HT = .86; p.eta_recup_LT = .86;
+        p.eta_heater = .94; p.eta_reheater = .94;
+        p.m_dot = 100;     p.alpha = 0.3;
+        p.deltaT_HT = 10;  p.deltaT_LT = 10;
     end
-end
-
-% 计算系统性能
-% 各组件功率/热负荷
-W_turbine_HP = m_dot * (states(1).h - states(2).h); % 高压透平功率，kW
-W_turbine_LP = m_dot * (states(3).h - states(4).h); % 低压透平功率，kW
-W_compressor_main_a = (1 - split_ratio) * m_dot * (states(9).h - states(8).h); % 主压缩机a功耗，kW
-W_compressor_main_b = (1 - split_ratio) * m_dot * (states(11).h - states(10).h); % 主压缩机b功耗，kW
-W_compressor_recomp = split_ratio * m_dot * (states(13).h - states(12).h); % 副压缩机功耗，kW
-Q_cooler = (1 - split_ratio) * m_dot * (states(7).h - states(8).h); % 冷却器热负荷，kW
-Q_intercooler = (1 - split_ratio) * m_dot * (states(9).h - states(10).h); % 中间冷却器热负荷，kW
-Q_heater = m_dot * (states(1).h - states(16).h); % 加热器热负荷，kW
-Q_reheater = m_dot * (states(3).h - states(2).h); % 再热器热负荷，kW
-Q_recup_HT = m_dot * (states(16).h - states(15).h); % 高温回热器热负荷，kW
-Q_recup_LT = m_dot * (states(15).h - states(14).h); % 低温回热器热负荷，kW
-
-% 系统净功率和热效率
-W_turbine = W_turbine_HP + W_turbine_LP; % 总透平功率，kW
-W_compressor = W_compressor_main_a + W_compressor_main_b + W_compressor_recomp; % 总压缩机功耗，kW
-W_net = W_turbine - W_compressor; % 净功率，kW
-Q_in = Q_heater + Q_reheater; % 总热输入，kW
-eta_thermal = W_net / Q_in; % 热效率
-
-% 输出性能指标
-performance = struct();
-performance.W_turbine_HP = W_turbine_HP;
-performance.W_turbine_LP = W_turbine_LP;
-performance.W_compressor_main_a = W_compressor_main_a;
-performance.W_compressor_main_b = W_compressor_main_b;
-performance.W_compressor_recomp = W_compressor_recomp;
-performance.Q_cooler = Q_cooler;
-performance.Q_intercooler = Q_intercooler;
-performance.Q_heater = Q_heater;
-performance.Q_reheater = Q_reheater;
-performance.Q_recup_HT = Q_recup_HT;
-performance.Q_recup_LT = Q_recup_LT;
-performance.W_turbine = W_turbine;
-performance.W_compressor = W_compressor;
-performance.W_net = W_net;
-performance.Q_in = Q_in;
-performance.eta_thermal = eta_thermal;
-performance.mass_flow = m_dot;
-performance.split_ratio = split_ratio;
-performance.iter_count = iter;
-
-% 迭代结束，打印全局能量流
-fprintf('\n===== 全局能量流 (kW) =====\n');
-fprintf('Q_heater   = %.1f\n', m_dot*(states(1).h - states(16).h));
-fprintf('Q_reheater = %.1f\n', m_dot*(states(3).h - states(2).h));
-fprintf('W_turbine  = %.1f\n', performance.W_turbine);
-fprintf('W_comp     = %.1f\n', performance.W_compressor);
-fprintf('Q_cooler   = %.1f\n', performance.Q_cooler);
-fprintf('Q_interc   = %.1f\n', performance.Q_intercooler);
-fprintf('Balance    = Q_in - (W_net + Q_cooler + Q_interc) = %.1f kW\n\n', ...
-        performance.Q_in - (performance.W_net + performance.Q_cooler + performance.Q_intercooler));
-
-end
+    
+    % 如果没有输入参数，则使用默认参数
+    if nargin < 1
+        para = default_para();
+    end
+    
