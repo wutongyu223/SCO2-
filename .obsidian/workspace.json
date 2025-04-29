@@ -1,0 +1,215 @@
+{
+  "main": {
+    "id": "76ab2a212caa91bb",
+    "type": "split",
+    "children": [
+      {
+        "id": "a5d2a5cc0f4a3eda",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "4abb0ee81c9be4bd",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "SCO2_Brayton_Cycle.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "SCO2_Brayton_Cycle"
+            }
+          },
+          {
+            "id": "42ae6abffe6171cf",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "SCO2_Brayton_Cycle.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "SCO2_Brayton_Cycle"
+            }
+          }
+        ],
+        "currentTab": 1
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "a854b045d683ca28",
+    "type": "split",
+    "children": [
+      {
+        "id": "1600ef42b792922b",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "c21f97bda5ea4965",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "文件列表"
+            }
+          },
+          {
+            "id": "6b979b3d7efc854b",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "搜索"
+            }
+          },
+          {
+            "id": "b8c792936689a1e9",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "书签"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "ae652d49f30e10a7",
+    "type": "split",
+    "children": [
+      {
+        "id": "5797f8d0508d8a3c",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "192811162a224061",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "SCO2_Brayton_Cycle.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "SCO2_Brayton_Cycle 的反向链接列表"
+            }
+          },
+          {
+            "id": "50db55a754358faa",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "SCO2_Brayton_Cycle.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "SCO2_Brayton_Cycle 的出链列表"
+            }
+          },
+          {
+            "id": "dcc7ccda0f4a7a55",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "标签"
+            }
+          },
+          {
+            "id": "9fc6db1be7a7ee88",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "SCO2_Brayton_Cycle.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "SCO2_Brayton_Cycle 的大纲"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:打开快速切换": false,
+      "graph:查看关系图谱": false,
+      "canvas:新建白板": false,
+      "daily-notes:打开/创建今天的日记": false,
+      "templates:插入模板": false,
+      "command-palette:打开命令面板": false
+    }
+  },
+  "active": "42ae6abffe6171cf",
+  "lastOpenFiles": [
+    "calculate_cycle函数.md",
+    "calautatlion.m代码结构.md",
+    "SCO2_BraytonCycle系统代码说明文档.md",
+    "radar_chart.png",
+    "correlation_heatmap.png",
+    "parallel_coordinates.png",
+    "objective_space_2d_projections.png",
+    "objective_space_3d.png",
+    "decision_space_scatter_matrix.png",
+    "decision_space_boxplot.png",
+    "visualize_optimization_results.py",
+    "best.csv",
+    "图3.7_系统各设备㶲损与㶲效率.png",
+    "图3.7_系统各设备㶲损与㶲效率.fig",
+    "图3.6_系统各设备㶲损.png",
+    "图3.6_系统各设备㶲损.fig",
+    "图3.5_主压缩机出口压力影响.png",
+    "图3.5_主压缩机出口压力影响.fig",
+    "图3.4_主压缩机入口温度影响.fig",
+    "图3.3_透平入口压力影响.fig",
+    "图3.2_透平入口温度影响.fig",
+    "图3.1_分流比影响.fig",
+    "SCO2_ParameterAnalysis.m",
+    "README.md",
+    "SCO2_Brayton_Cycle.md",
+    "sCO2_Brayton_Cycle_Calculation.md"
+  ]
+}
